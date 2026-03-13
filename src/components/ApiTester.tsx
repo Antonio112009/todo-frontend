@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useLoggedFetch } from "@/hooks/useLoggedFetch";
 
 type TestStatus = "idle" | "running" | "pass" | "fail";
 
@@ -91,6 +92,7 @@ export default function ApiTester() {
   const [runningIndex, setRunningIndex] = useState<number | null>(null);
   const [runningAll, setRunningAll] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const loggedFetch = useLoggedFetch("test");
 
   // Refs for cross-test data (avoids stale closures)
   const createdIdRef = useRef<number | null>(null);
@@ -127,7 +129,7 @@ export default function ApiTester() {
     const url = `${baseUrl}/todos`;
     update(0, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
-      const res = await fetch(url);
+      const res = await loggedFetch(url);
       const text = await res.text();
       update(0, { response: { status: res.status, statusText: res.statusText, body: text } });
       if (!res.ok) throw new Error(httpError(res));
@@ -148,7 +150,7 @@ export default function ApiTester() {
     const url = `${baseUrl}/todos`;
     update(1, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
-      const res = await fetch(url);
+      const res = await loggedFetch(url);
       const text = await res.text();
       update(1, { response: { status: res.status, statusText: res.statusText, body: text } });
       if (!res.ok) throw new Error(httpError(res));
@@ -171,7 +173,7 @@ export default function ApiTester() {
     const reqBody = JSON.stringify({ title });
     update(2, { status: "running", detail: "", request: { method: "POST", url, body: reqBody }, response: null });
     try {
-      const res = await fetch(url, {
+      const res = await loggedFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: reqBody,
@@ -200,7 +202,7 @@ export default function ApiTester() {
     const url = `${baseUrl}/todos`;
     update(3, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
-      const res = await fetch(url);
+      const res = await loggedFetch(url);
       const text = await res.text();
       update(3, { response: { status: res.status, statusText: res.statusText, body: text } });
       if (!res.ok) throw new Error(httpError(res));
@@ -229,7 +231,7 @@ export default function ApiTester() {
     const reqBody = JSON.stringify({ title: newTitle, completed: true });
     update(4, { status: "running", detail: "", request: { method: "PUT", url, body: reqBody }, response: null });
     try {
-      const res = await fetch(url, {
+      const res = await loggedFetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: reqBody,
@@ -256,7 +258,7 @@ export default function ApiTester() {
     const url = `${baseUrl}/todos`;
     update(5, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
-      const res = await fetch(url);
+      const res = await loggedFetch(url);
       const text = await res.text();
       update(5, { response: { status: res.status, statusText: res.statusText, body: text } });
       if (!res.ok) throw new Error(httpError(res));
@@ -281,7 +283,7 @@ export default function ApiTester() {
     const url = `${baseUrl}/todos/${id}`;
     update(6, { status: "running", detail: "", request: { method: "DELETE", url }, response: null });
     try {
-      const res = await fetch(url, { method: "DELETE" });
+      const res = await loggedFetch(url, { method: "DELETE" });
       const text = await res.text();
       update(6, { response: { status: res.status, statusText: res.statusText, body: text || "(empty)" } });
       if (!res.ok) throw new Error(httpError(res));
@@ -299,7 +301,7 @@ export default function ApiTester() {
     const url = `${baseUrl}/todos`;
     update(7, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
-      const res = await fetch(url);
+      const res = await loggedFetch(url);
       const text = await res.text();
       update(7, { response: { status: res.status, statusText: res.statusText, body: text } });
       if (!res.ok) throw new Error(httpError(res));
