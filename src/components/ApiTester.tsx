@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-type TestStatus = "idle" | "running" | "pass" | "fail" | "skipped";
+type TestStatus = "idle" | "running" | "pass" | "fail";
 
 interface TestResult {
   name: string;
@@ -18,12 +18,58 @@ interface TestResult {
   response: { status: number | null; body: string } | null;
 }
 
+// ── Random test data ───────────────────────────────────────────────
+
+const RANDOM_TITLES = [
+  "Buy groceries 🛒",
+  "Walk the dog 🐕",
+  "Read a book 📖",
+  "Clean the house 🏠",
+  "Call the dentist 🦷",
+  "Fix the bike 🚲",
+  "Write a report 📝",
+  "Cook dinner 🍳",
+  "Water the plants 🌱",
+  "Learn TypeScript 💻",
+  "Go for a run 🏃",
+  "Send the email ✉️",
+  "Organize desk 🗂️",
+  "Pay the bills 💳",
+  "Take out trash 🗑️",
+];
+
+const RANDOM_UPDATES = [
+  "Buy organic groceries 🥦",
+  "Walk in the park 🌳",
+  "Finish the novel 📚",
+  "Deep clean kitchen 🧹",
+  "Schedule check-up 🏥",
+  "Tune up the bike 🔧",
+  "Submit final report 📊",
+  "Meal prep for the week 🥗",
+  "Repot the cactus 🌵",
+  "Build a side project 🚀",
+  "Run 5K 🏅",
+  "Follow up on email 📨",
+  "Reorganize bookshelf 📕",
+  "Set up auto-pay 🏦",
+  "Recycling day ♻️",
+];
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// ── Test definitions ───────────────────────────────────────────────
+
 const TEST_NAMES = [
-  "GET /todos",
-  "POST /todos",
-  "PUT /todos/:id",
-  "DELETE /todos/:id",
-  "Verify deletion",
+  "GET /todos — check initial list",
+  "POST /todos — create todo",
+  "GET /todos — verify created",
+  "PUT /todos/:id — update todo",
+  "GET /todos — verify updated",
+  "DELETE /todos/:id — remove todo",
+  "GET /todos — verify deleted",
 ];
 
 function makeInitial(): TestResult[] {
@@ -43,8 +89,13 @@ export default function ApiTester() {
   const [tests, setTests] = useState<TestResult[]>(makeInitial());
   const [runningIndex, setRunningIndex] = useState<number | null>(null);
   const [runningAll, setRunningAll] = useState(false);
-  const [lastCreatedId, setLastCreatedId] = useState<number | null>(null);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
+  // Refs for cross-test data (avoids stale closures)
+  const createdIdRef = useRef<number | null>(null);
+  const titleRef = useRef("");
+  const updatedTitleRef = useRef("");
+  const initialCountRef = useRef(0);
 
   function update(index: number, patch: Partial<TestResult>) {
     setTests((prev) =>
@@ -54,7 +105,7 @@ export default function ApiTester() {
 
   function resetAll() {
     setTests(makeInitial());
-    setLastCreatedId(null);
+    createdIdRef.current = null;
     setExpandedIndex(null);
   }
 
@@ -64,7 +115,8 @@ export default function ApiTester() {
 
   // ── Individual test runners ──────────────────────────────────────
 
-  async function runGetTodos(): Promise<boolean> {
+  /** Step 1: GET /todos — record initial count */
+  async function runStep0(): Promise<boolean> {
     const url = `${baseUrl}/todos`;
     update(0, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
@@ -74,23 +126,22 @@ export default function ApiTester() {
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const data = JSON.parse(text);
       if (!Array.isArray(data)) throw new Error("Expected JSON array");
-      update(0, { status: "pass", detail: `Returned ${data.length} todo(s)` });
+      initialCountRef.current = data.length;
+      update(0, { status: "pass", detail: `List has ${data.length} todo(s)` });
       return true;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      update(0, { status: "fail", detail: msg });
+      update(0, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
       return false;
     }
   }
 
-  async function runPostTodo(): Promise<{ ok: boolean; id: number | null }> {
+  /** Step 2: POST /todos — create with random title */
+  async function runStep1(): Promise<{ ok: boolean; id: number | null }> {
+    const title = pickRandom(RANDOM_TITLES);
+    titleRef.current = title;
     const url = `${baseUrl}/todos`;
-    const reqBody = JSON.stringify({ title: "__test_todo__" });
-    update(1, {
-      status: "running", detail: "",
-      request: { method: "POST", url, body: reqBody },
-      response: null,
-    });
+    const reqBody = JSON.stringify({ title });
+    update(1, { status: "running", detail: "", request: { method: "POST", url, body: reqBody }, response: null });
     try {
       const res = await fetch(url, {
         method: "POST",
@@ -102,12 +153,12 @@ export default function ApiTester() {
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const data = JSON.parse(text);
       if (!data.id) throw new Error("Response missing 'id' field");
-      if (data.title !== "__test_todo__")
-        throw new Error(`Expected title "__test_todo__", got "${data.title}"`);
+      if (data.title !== title)
+        throw new Error(`Expected title "${title}", got "${data.title}"`);
       if (data.completed !== false)
         throw new Error(`Expected completed=false, got ${data.completed}`);
-      setLastCreatedId(data.id);
-      update(1, { status: "pass", detail: `Created todo id=${data.id}` });
+      createdIdRef.current = data.id;
+      update(1, { status: "pass", detail: `Created id=${data.id} "${title}"` });
       return { ok: true, id: data.id };
     } catch (e: unknown) {
       update(1, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
@@ -115,33 +166,25 @@ export default function ApiTester() {
     }
   }
 
-  async function runPutTodo(id: number | null): Promise<boolean> {
-    if (id == null) {
-      update(2, { status: "fail", detail: "No todo id — run POST first", request: null, response: null });
-      return false;
-    }
-    const url = `${baseUrl}/todos/${id}`;
-    const reqBody = JSON.stringify({ title: "__test_updated__", completed: true });
-    update(2, {
-      status: "running", detail: "",
-      request: { method: "PUT", url, body: reqBody },
-      response: null,
-    });
+  /** Step 3: GET /todos — verify the new todo exists */
+  async function runStep2(id: number | null): Promise<boolean> {
+    if (id == null) { update(2, { status: "fail", detail: "No id — run POST first", request: null, response: null }); return false; }
+    const url = `${baseUrl}/todos`;
+    update(2, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
-      const res = await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: reqBody,
-      });
+      const res = await fetch(url);
       const text = await res.text();
       update(2, { response: { status: res.status, body: text } });
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const data = JSON.parse(text);
-      if (data.title !== "__test_updated__")
-        throw new Error(`Expected title "__test_updated__", got "${data.title}"`);
-      if (data.completed !== true)
-        throw new Error(`Expected completed=true, got ${data.completed}`);
-      update(2, { status: "pass", detail: `Updated todo id=${id}` });
+      if (!Array.isArray(data)) throw new Error("Expected JSON array");
+      const found = data.find((t: { id: number }) => t.id === id);
+      if (!found) throw new Error(`Todo id=${id} not found in list`);
+      if (found.title !== titleRef.current)
+        throw new Error(`Expected title "${titleRef.current}", got "${found.title}"`);
+      if (data.length !== initialCountRef.current + 1)
+        throw new Error(`Expected ${initialCountRef.current + 1} todos, got ${data.length}`);
+      update(2, { status: "pass", detail: `Todo id=${id} found, count=${data.length}` });
       return true;
     } catch (e: unknown) {
       update(2, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
@@ -149,23 +192,29 @@ export default function ApiTester() {
     }
   }
 
-  async function runDeleteTodo(id: number | null): Promise<boolean> {
-    if (id == null) {
-      update(3, { status: "fail", detail: "No todo id — run POST first", request: null, response: null });
-      return false;
-    }
+  /** Step 4: PUT /todos/:id — update with random title + completed=true */
+  async function runStep3(id: number | null): Promise<boolean> {
+    if (id == null) { update(3, { status: "fail", detail: "No id — run POST first", request: null, response: null }); return false; }
+    const newTitle = pickRandom(RANDOM_UPDATES);
+    updatedTitleRef.current = newTitle;
     const url = `${baseUrl}/todos/${id}`;
-    update(3, {
-      status: "running", detail: "",
-      request: { method: "DELETE", url },
-      response: null,
-    });
+    const reqBody = JSON.stringify({ title: newTitle, completed: true });
+    update(3, { status: "running", detail: "", request: { method: "PUT", url, body: reqBody }, response: null });
     try {
-      const res = await fetch(url, { method: "DELETE" });
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: reqBody,
+      });
       const text = await res.text();
-      update(3, { response: { status: res.status, body: text || "(empty)" } });
+      update(3, { response: { status: res.status, body: text } });
       if (!res.ok) throw new Error(`Status ${res.status}`);
-      update(3, { status: "pass", detail: `Deleted todo id=${id}` });
+      const data = JSON.parse(text);
+      if (data.title !== newTitle)
+        throw new Error(`Expected title "${newTitle}", got "${data.title}"`);
+      if (data.completed !== true)
+        throw new Error(`Expected completed=true, got ${data.completed}`);
+      update(3, { status: "pass", detail: `Updated id=${id} → "${newTitle}"` });
       return true;
     } catch (e: unknown) {
       update(3, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
@@ -173,17 +222,11 @@ export default function ApiTester() {
     }
   }
 
-  async function runVerifyDeletion(id: number | null): Promise<boolean> {
-    if (id == null) {
-      update(4, { status: "fail", detail: "No todo id — run POST & DELETE first", request: null, response: null });
-      return false;
-    }
+  /** Step 5: GET /todos — verify the update persisted */
+  async function runStep4(id: number | null): Promise<boolean> {
+    if (id == null) { update(4, { status: "fail", detail: "No id — run POST first", request: null, response: null }); return false; }
     const url = `${baseUrl}/todos`;
-    update(4, {
-      status: "running", detail: "",
-      request: { method: "GET", url },
-      response: null,
-    });
+    update(4, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
       const res = await fetch(url);
       const text = await res.text();
@@ -191,11 +234,57 @@ export default function ApiTester() {
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const data = JSON.parse(text);
       const found = data.find((t: { id: number }) => t.id === id);
-      if (found) throw new Error(`Todo id=${id} still exists after deletion`);
-      update(4, { status: "pass", detail: "Confirmed todo was deleted" });
+      if (!found) throw new Error(`Todo id=${id} not found after update`);
+      if (found.title !== updatedTitleRef.current)
+        throw new Error(`Expected title "${updatedTitleRef.current}", got "${found.title}"`);
+      if (found.completed !== true)
+        throw new Error(`Expected completed=true, got ${found.completed}`);
+      update(4, { status: "pass", detail: `Verified update: "${updatedTitleRef.current}", completed=true` });
       return true;
     } catch (e: unknown) {
       update(4, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  }
+
+  /** Step 6: DELETE /todos/:id */
+  async function runStep5(id: number | null): Promise<boolean> {
+    if (id == null) { update(5, { status: "fail", detail: "No id — run POST first", request: null, response: null }); return false; }
+    const url = `${baseUrl}/todos/${id}`;
+    update(5, { status: "running", detail: "", request: { method: "DELETE", url }, response: null });
+    try {
+      const res = await fetch(url, { method: "DELETE" });
+      const text = await res.text();
+      update(5, { response: { status: res.status, body: text || "(empty)" } });
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      update(5, { status: "pass", detail: `Deleted id=${id}` });
+      return true;
+    } catch (e: unknown) {
+      update(5, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  }
+
+  /** Step 7: GET /todos — verify todo is gone & count restored */
+  async function runStep6(id: number | null): Promise<boolean> {
+    if (id == null) { update(6, { status: "fail", detail: "No id — run POST & DELETE first", request: null, response: null }); return false; }
+    const url = `${baseUrl}/todos`;
+    update(6, { status: "running", detail: "", request: { method: "GET", url }, response: null });
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      update(6, { response: { status: res.status, body: text } });
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const data = JSON.parse(text);
+      if (!Array.isArray(data)) throw new Error("Expected JSON array");
+      const found = data.find((t: { id: number }) => t.id === id);
+      if (found) throw new Error(`Todo id=${id} still exists after deletion`);
+      if (data.length !== initialCountRef.current)
+        throw new Error(`Expected ${initialCountRef.current} todos, got ${data.length}`);
+      update(6, { status: "pass", detail: `Deleted todo gone, count back to ${data.length}` });
+      return true;
+    } catch (e: unknown) {
+      update(6, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
       return false;
     }
   }
@@ -205,11 +294,14 @@ export default function ApiTester() {
   async function runSingle(index: number) {
     setRunningIndex(index);
     setExpandedIndex(index);
-    if (index === 0) await runGetTodos();
-    else if (index === 1) await runPostTodo();
-    else if (index === 2) await runPutTodo(lastCreatedId);
-    else if (index === 3) await runDeleteTodo(lastCreatedId);
-    else if (index === 4) await runVerifyDeletion(lastCreatedId);
+    const id = createdIdRef.current;
+    if (index === 0) await runStep0();
+    else if (index === 1) await runStep1();
+    else if (index === 2) await runStep2(id);
+    else if (index === 3) await runStep3(id);
+    else if (index === 4) await runStep4(id);
+    else if (index === 5) await runStep5(id);
+    else if (index === 6) await runStep6(id);
     setRunningIndex(null);
   }
 
@@ -220,28 +312,19 @@ export default function ApiTester() {
     resetAll();
     await new Promise((r) => setTimeout(r, 50));
 
-    // 1. GET
-    if (!(await runGetTodos())) { setRunningAll(false); return; }
-
-    // 2. POST
-    const postResult = await runPostTodo();
-    if (!postResult.ok) { setRunningAll(false); return; }
-    const createdId = postResult.id;
-
-    // 3. PUT
-    if (!(await runPutTodo(createdId))) { setRunningAll(false); return; }
-
-    // 4. DELETE
-    if (!(await runDeleteTodo(createdId))) { setRunningAll(false); return; }
-
-    // 5. Verify
-    await runVerifyDeletion(createdId);
-
+    if (!(await runStep0())) { setRunningAll(false); return; }
+    const post = await runStep1();
+    if (!post.ok) { setRunningAll(false); return; }
+    const id = post.id;
+    if (!(await runStep2(id))) { setRunningAll(false); return; }
+    if (!(await runStep3(id))) { setRunningAll(false); return; }
+    if (!(await runStep4(id))) { setRunningAll(false); return; }
+    if (!(await runStep5(id))) { setRunningAll(false); return; }
+    await runStep6(id);
     setRunningAll(false);
   }
 
   const busy = runningAll || runningIndex !== null;
-
   const allPassed = tests.every((t) => t.status === "pass");
   const ranCount = tests.filter((t) => t.status !== "idle").length;
   const passCount = tests.filter((t) => t.status === "pass").length;
@@ -269,7 +352,7 @@ export default function ApiTester() {
           <div>
             <CardTitle className="text-lg">Backend Test Suite</CardTitle>
             <CardDescription className="mt-1">
-              Runs 5 sequential tests to verify your API works correctly.
+              Runs 7 sequential tests with random data to verify your API.
             </CardDescription>
           </div>
           <div className="flex gap-2">
@@ -320,6 +403,7 @@ export default function ApiTester() {
         <div className="flex flex-col gap-1.5">
           {tests.map((test, i) => {
             const method = test.request?.method || test.name.split(" ")[0];
+            const label = test.name.replace(/^(GET|POST|PUT|DELETE)\s+\S+\s*—?\s*/, "");
             return (
               <div key={i}>
                 <div
@@ -353,7 +437,7 @@ export default function ApiTester() {
                     <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold leading-none ${methodColor[method] || "bg-muted text-muted-foreground"}`}>
                       {method}
                     </span>
-                    <span className="font-medium truncate">{test.name.replace(/^(GET|POST|PUT|DELETE)\s*/, "")}</span>
+                    <span className="font-medium truncate">{label}</span>
                   </div>
 
                   {/* Detail text */}
