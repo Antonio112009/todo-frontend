@@ -7,6 +7,7 @@ import TodoForm from "@/components/TodoForm";
 import TodoList from "@/components/TodoList";
 import ApiSpec from "@/components/ApiSpec";
 import ApiTester from "@/components/ApiTester";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -64,9 +65,13 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
-      <h1 className="mb-6 text-center text-3xl font-bold tracking-tight">
-        ✅ Todo List
-      </h1>
+      <div className="mb-6 flex items-center justify-between">
+        <div />
+        <h1 className="text-3xl font-bold tracking-tight">
+          ✅ Todo List
+        </h1>
+        <ThemeToggle />
+      </div>
 
       <Tabs defaultValue="todos">
         <TabsList className="mb-6 w-full">

@@ -242,15 +242,10 @@ export default function ApiTester() {
 
   const busy = runningAll || runningIndex !== null;
 
-  const statusIcon: Record<TestStatus, string> = {
-    idle: "⚪",
-    running: "🔄",
-    pass: "✅",
-    fail: "❌",
-    skipped: "⏭️",
-  };
-
   const allPassed = tests.every((t) => t.status === "pass");
+  const ranCount = tests.filter((t) => t.status !== "idle").length;
+  const passCount = tests.filter((t) => t.status === "pass").length;
+  const failCount = tests.filter((t) => t.status === "fail").length;
 
   function formatJson(raw: string): string {
     try {
@@ -260,30 +255,38 @@ export default function ApiTester() {
     }
   }
 
+  const methodColor: Record<string, string> = {
+    GET: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+    POST: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+    PUT: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+    DELETE: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  };
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">🧪 Backend Test</CardTitle>
+          <div>
+            <CardTitle className="text-lg">Backend Test Suite</CardTitle>
+            <CardDescription className="mt-1">
+              Runs 5 sequential tests to verify your API works correctly.
+            </CardDescription>
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={resetAll} disabled={busy}>
               Reset
             </Button>
             <Button size="sm" onClick={runAllTests} disabled={busy}>
-              {runningAll ? "Running…" : "Run All Tests"}
+              {runningAll ? "Running…" : "▶ Run All"}
             </Button>
           </div>
         </div>
-        <CardDescription>
-          Creates a test todo, updates it, deletes it, and verifies each step.
-          Click a row to see request/response details.
-        </CardDescription>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        {/* Configurable base URL */}
+      <CardContent className="space-y-5">
+        {/* Base URL */}
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium whitespace-nowrap">Base URL:</label>
+          <label className="text-sm font-medium whitespace-nowrap">Base URL</label>
           <Input
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
@@ -293,106 +296,152 @@ export default function ApiTester() {
           />
         </div>
 
+        {/* Progress bar */}
+        {ranCount > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Progress</span>
+              <span>{passCount + failCount} / {tests.length} completed</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  failCount > 0 ? "bg-destructive" : "bg-green-500"
+                }`}
+                style={{ width: `${((passCount + failCount) / tests.length) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         <Separator />
 
-        {/* Test rows */}
-        <div className="flex flex-col gap-2">
-          {tests.map((test, i) => (
-            <div key={i}>
-              <div
-                className={`flex items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors cursor-pointer
-                  ${test.status === "pass"
-                    ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
-                    : test.status === "fail"
-                    ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
-                    : "border-border bg-card"
-                  }
-                  ${expandedIndex === i ? "rounded-b-none" : ""}`}
-                onClick={() => toggleExpand(i)}
-              >
-                <span className="text-base">{statusIcon[test.status]}</span>
-                <div className="flex-1 min-w-0">
-                  <span className="font-medium">{test.name}</span>
+        {/* Test list */}
+        <div className="flex flex-col gap-1.5">
+          {tests.map((test, i) => {
+            const method = test.request?.method || test.name.split(" ")[0];
+            return (
+              <div key={i}>
+                <div
+                  className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-sm transition-colors cursor-pointer
+                    ${test.status === "pass"
+                      ? "border-green-200 bg-green-50/60 dark:border-green-800/60 dark:bg-green-900/20"
+                      : test.status === "fail"
+                      ? "border-red-200 bg-red-50/60 dark:border-red-800/60 dark:bg-red-900/20"
+                      : test.status === "running"
+                      ? "border-blue-200 bg-blue-50/40 dark:border-blue-800/40 dark:bg-blue-900/10"
+                      : "border-border bg-card hover:bg-muted/50"
+                    }
+                    ${expandedIndex === i ? "rounded-b-none border-b-transparent" : ""}`}
+                  onClick={() => toggleExpand(i)}
+                >
+                  {/* Step number */}
+                  <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold
+                    ${test.status === "pass"
+                      ? "bg-green-500 text-white"
+                      : test.status === "fail"
+                      ? "bg-red-500 text-white"
+                      : test.status === "running"
+                      ? "bg-blue-500 text-white animate-pulse"
+                      : "bg-muted text-muted-foreground"
+                    }`}>
+                    {test.status === "pass" ? "✓" : test.status === "fail" ? "✗" : i + 1}
+                  </span>
+
+                  {/* Method badge + name */}
+                  <div className="flex flex-1 items-center gap-2 min-w-0">
+                    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold leading-none ${methodColor[method] || "bg-muted text-muted-foreground"}`}>
+                      {method}
+                    </span>
+                    <span className="font-medium truncate">{test.name.replace(/^(GET|POST|PUT|DELETE)\s*/, "")}</span>
+                  </div>
+
+                  {/* Detail text */}
                   {test.detail && (
-                    <p className={`mt-0.5 text-xs truncate ${
+                    <span className={`hidden sm:inline text-xs truncate max-w-[180px] ${
                       test.status === "fail" ? "text-destructive" : "text-muted-foreground"
                     }`}>
                       {test.detail}
-                    </p>
+                    </span>
                   )}
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {expandedIndex === i ? "▲" : "▼"}
-                </span>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={(e) => { e.stopPropagation(); runSingle(i); }}
-                  disabled={busy}
-                >
-                  Run
-                </Button>
-              </div>
 
-              {/* Expanded request/response panel */}
-              {expandedIndex === i && (
-                <div className="rounded-b-lg border border-t-0 border-border bg-muted/50 px-4 py-3 space-y-3">
-                  {test.status === "idle" ? (
-                    <p className="text-xs text-muted-foreground italic">
-                      Click &quot;Run&quot; to see request and response details.
-                    </p>
-                  ) : (
-                    <>
-                      {/* Request */}
-                      {test.request && (
-                        <div>
-                          <div className="mb-1 flex items-center gap-2">
-                            <Badge variant="outline" className="text-[10px] font-semibold">REQUEST</Badge>
-                            <code className="text-xs text-muted-foreground">
-                              {test.request.method} {test.request.url}
-                            </code>
+                  <span className="text-[10px] text-muted-foreground">
+                    {expandedIndex === i ? "▲" : "▼"}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={(e) => { e.stopPropagation(); runSingle(i); }}
+                    disabled={busy}
+                  >
+                    Run
+                  </Button>
+                </div>
+
+                {/* Expanded panel */}
+                {expandedIndex === i && (
+                  <div className="rounded-b-lg border border-t-0 border-border bg-muted/30 dark:bg-muted/10 px-4 py-3 space-y-3">
+                    {test.status === "idle" ? (
+                      <p className="text-xs text-muted-foreground italic">
+                        Click &quot;Run&quot; to see request and response details.
+                      </p>
+                    ) : (
+                      <>
+                        {/* Request */}
+                        {test.request && (
+                          <div>
+                            <div className="mb-1.5 flex items-center gap-2">
+                              <span className="inline-flex items-center rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                                REQUEST
+                              </span>
+                              <code className="text-xs font-mono text-muted-foreground">
+                                {test.request.method} {test.request.url}
+                              </code>
+                            </div>
+                            {test.request.body ? (
+                              <pre className="rounded-md bg-background border border-border p-3 text-xs font-mono overflow-x-auto leading-relaxed">
+                                {formatJson(test.request.body)}
+                              </pre>
+                            ) : (
+                              <p className="text-xs text-muted-foreground italic">No request body</p>
+                            )}
                           </div>
-                          {test.request.body ? (
-                            <pre className="rounded-md bg-background border border-border p-2.5 text-xs font-mono overflow-x-auto">
-                              {formatJson(test.request.body)}
+                        )}
+
+                        {/* Response */}
+                        {test.response && (
+                          <div>
+                            <div className="mb-1.5 flex items-center gap-2">
+                              <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold
+                                ${test.response.status && test.response.status < 400
+                                  ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                                  : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                                }`}>
+                                RESPONSE
+                              </span>
+                              <code className="text-xs font-mono text-muted-foreground">
+                                Status {test.response.status}
+                              </code>
+                            </div>
+                            <pre className="rounded-md bg-background border border-border p-3 text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto leading-relaxed">
+                              {formatJson(test.response.body)}
                             </pre>
-                          ) : (
-                            <p className="text-xs text-muted-foreground italic">No request body</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Response */}
-                      {test.response && (
-                        <div>
-                          <div className="mb-1 flex items-center gap-2">
-                            <Badge
-                              variant={test.response.status && test.response.status < 400 ? "default" : "destructive"}
-                              className="text-[10px] font-semibold"
-                            >
-                              RESPONSE
-                            </Badge>
-                            <code className="text-xs text-muted-foreground">
-                              Status: {test.response.status}
-                            </code>
                           </div>
-                          <pre className="rounded-md bg-background border border-border p-2.5 text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto">
-                            {formatJson(test.response.body)}
-                          </pre>
-                        </div>
-                      )}
+                        )}
 
-                      {test.status === "running" && (
-                        <p className="text-xs text-muted-foreground animate-pulse">Waiting for response…</p>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                        {test.status === "running" && (
+                          <p className="text-xs text-muted-foreground animate-pulse">Waiting for response…</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
+        {/* Summary */}
         {allPassed && (
           <Alert>
             <AlertDescription className="text-center font-semibold">
@@ -401,12 +450,12 @@ export default function ApiTester() {
           </Alert>
         )}
 
-        {tests.some((t) => t.status !== "idle") && (
+        {ranCount > 0 && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>Results:</span>
-            <Badge variant="default">{tests.filter((t) => t.status === "pass").length} passed</Badge>
-            {tests.some((t) => t.status === "fail") && (
-              <Badge variant="destructive">{tests.filter((t) => t.status === "fail").length} failed</Badge>
+            <Badge variant="default">{passCount} passed</Badge>
+            {failCount > 0 && (
+              <Badge variant="destructive">{failCount} failed</Badge>
             )}
           </div>
         )}
