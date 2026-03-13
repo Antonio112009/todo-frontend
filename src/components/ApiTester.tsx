@@ -15,7 +15,7 @@ interface TestResult {
   status: TestStatus;
   detail: string;
   request: { method: string; url: string; body?: string } | null;
-  response: { status: number | null; body: string } | null;
+  response: { status: number | null; statusText: string; body: string } | null;
 }
 
 // ── Random test data ───────────────────────────────────────────────
@@ -63,13 +63,14 @@ function pickRandom<T>(arr: T[]): T {
 // ── Test definitions ───────────────────────────────────────────────
 
 const TEST_NAMES = [
-  "GET /todos — check initial list",
-  "POST /todos — create todo",
-  "GET /todos — verify created",
-  "PUT /todos/:id — update todo",
-  "GET /todos — verify updated",
-  "DELETE /todos/:id — remove todo",
-  "GET /todos — verify deleted",
+  "GET /todos — Test connection to backend server",
+  "GET /todos — Fetch all todos to record initial state",
+  "POST /todos — Create a new todo with random title",
+  "GET /todos — Confirm the new todo appears in the list",
+  "PUT /todos/:id — Update title and mark as completed",
+  "GET /todos — Confirm changes are persisted",
+  "DELETE /todos/:id — Remove the test todo",
+  "GET /todos — Confirm todo is gone and list is restored",
 ];
 
 function makeInitial(): TestResult[] {
@@ -113,24 +114,51 @@ export default function ApiTester() {
     setExpandedIndex((prev) => (prev === i ? null : i));
   }
 
+  // ── Helper to format error with HTTP status ─────────────────────
+
+  function httpError(res: Response): string {
+    return `${res.status} ${res.statusText}`;
+  }
+
   // ── Individual test runners ──────────────────────────────────────
 
-  /** Step 1: GET /todos — record initial count */
-  async function runStep0(): Promise<boolean> {
+  /** Step 0: Test connection — can we reach the server at all? */
+  async function runStepConnection(): Promise<boolean> {
     const url = `${baseUrl}/todos`;
     update(0, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
       const res = await fetch(url);
       const text = await res.text();
-      update(0, { response: { status: res.status, body: text } });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
+      update(0, { response: { status: res.status, statusText: res.statusText, body: text } });
+      if (!res.ok) throw new Error(httpError(res));
+      update(0, { status: "pass", detail: `Connected — server responded with ${res.status} ${res.statusText}` });
+      return true;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const detail = msg.includes("fetch") || msg.includes("Failed") || msg.includes("NetworkError")
+        ? `Cannot reach server at ${baseUrl} — is it running?`
+        : msg;
+      update(0, { status: "fail", detail });
+      return false;
+    }
+  }
+
+  /** Step 1: GET /todos — record initial count */
+  async function runStep0(): Promise<boolean> {
+    const url = `${baseUrl}/todos`;
+    update(1, { status: "running", detail: "", request: { method: "GET", url }, response: null });
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      update(1, { response: { status: res.status, statusText: res.statusText, body: text } });
+      if (!res.ok) throw new Error(httpError(res));
       const data = JSON.parse(text);
       if (!Array.isArray(data)) throw new Error("Expected JSON array");
       initialCountRef.current = data.length;
-      update(0, { status: "pass", detail: `List has ${data.length} todo(s)` });
+      update(1, { status: "pass", detail: `Initial list: ${data.length} todo(s)` });
       return true;
     } catch (e: unknown) {
-      update(0, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      update(1, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
       return false;
     }
   }
@@ -141,7 +169,7 @@ export default function ApiTester() {
     titleRef.current = title;
     const url = `${baseUrl}/todos`;
     const reqBody = JSON.stringify({ title });
-    update(1, { status: "running", detail: "", request: { method: "POST", url, body: reqBody }, response: null });
+    update(2, { status: "running", detail: "", request: { method: "POST", url, body: reqBody }, response: null });
     try {
       const res = await fetch(url, {
         method: "POST",
@@ -149,8 +177,8 @@ export default function ApiTester() {
         body: reqBody,
       });
       const text = await res.text();
-      update(1, { response: { status: res.status, body: text } });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
+      update(2, { response: { status: res.status, statusText: res.statusText, body: text } });
+      if (!res.ok) throw new Error(httpError(res));
       const data = JSON.parse(text);
       if (!data.id) throw new Error("Response missing 'id' field");
       if (data.title !== title)
@@ -158,24 +186,24 @@ export default function ApiTester() {
       if (data.completed !== false)
         throw new Error(`Expected completed=false, got ${data.completed}`);
       createdIdRef.current = data.id;
-      update(1, { status: "pass", detail: `Created id=${data.id} "${title}"` });
+      update(2, { status: "pass", detail: `Created todo #${data.id}: "${title}"` });
       return { ok: true, id: data.id };
     } catch (e: unknown) {
-      update(1, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      update(2, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
       return { ok: false, id: null };
     }
   }
 
   /** Step 3: GET /todos — verify the new todo exists */
   async function runStep2(id: number | null): Promise<boolean> {
-    if (id == null) { update(2, { status: "fail", detail: "No id — run POST first", request: null, response: null }); return false; }
+    if (id == null) { update(3, { status: "fail", detail: "No id — run POST first", request: null, response: null }); return false; }
     const url = `${baseUrl}/todos`;
-    update(2, { status: "running", detail: "", request: { method: "GET", url }, response: null });
+    update(3, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
       const res = await fetch(url);
       const text = await res.text();
-      update(2, { response: { status: res.status, body: text } });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
+      update(3, { response: { status: res.status, statusText: res.statusText, body: text } });
+      if (!res.ok) throw new Error(httpError(res));
       const data = JSON.parse(text);
       if (!Array.isArray(data)) throw new Error("Expected JSON array");
       const found = data.find((t: { id: number }) => t.id === id);
@@ -184,37 +212,7 @@ export default function ApiTester() {
         throw new Error(`Expected title "${titleRef.current}", got "${found.title}"`);
       if (data.length !== initialCountRef.current + 1)
         throw new Error(`Expected ${initialCountRef.current + 1} todos, got ${data.length}`);
-      update(2, { status: "pass", detail: `Todo id=${id} found, count=${data.length}` });
-      return true;
-    } catch (e: unknown) {
-      update(2, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
-      return false;
-    }
-  }
-
-  /** Step 4: PUT /todos/:id — update with random title + completed=true */
-  async function runStep3(id: number | null): Promise<boolean> {
-    if (id == null) { update(3, { status: "fail", detail: "No id — run POST first", request: null, response: null }); return false; }
-    const newTitle = pickRandom(RANDOM_UPDATES);
-    updatedTitleRef.current = newTitle;
-    const url = `${baseUrl}/todos/${id}`;
-    const reqBody = JSON.stringify({ title: newTitle, completed: true });
-    update(3, { status: "running", detail: "", request: { method: "PUT", url, body: reqBody }, response: null });
-    try {
-      const res = await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: reqBody,
-      });
-      const text = await res.text();
-      update(3, { response: { status: res.status, body: text } });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
-      const data = JSON.parse(text);
-      if (data.title !== newTitle)
-        throw new Error(`Expected title "${newTitle}", got "${data.title}"`);
-      if (data.completed !== true)
-        throw new Error(`Expected completed=true, got ${data.completed}`);
-      update(3, { status: "pass", detail: `Updated id=${id} → "${newTitle}"` });
+      update(3, { status: "pass", detail: `Todo #${id} found in list (${data.length} total)` });
       return true;
     } catch (e: unknown) {
       update(3, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
@@ -222,24 +220,29 @@ export default function ApiTester() {
     }
   }
 
-  /** Step 5: GET /todos — verify the update persisted */
-  async function runStep4(id: number | null): Promise<boolean> {
+  /** Step 4: PUT /todos/:id — update with random title + completed=true */
+  async function runStep3(id: number | null): Promise<boolean> {
     if (id == null) { update(4, { status: "fail", detail: "No id — run POST first", request: null, response: null }); return false; }
-    const url = `${baseUrl}/todos`;
-    update(4, { status: "running", detail: "", request: { method: "GET", url }, response: null });
+    const newTitle = pickRandom(RANDOM_UPDATES);
+    updatedTitleRef.current = newTitle;
+    const url = `${baseUrl}/todos/${id}`;
+    const reqBody = JSON.stringify({ title: newTitle, completed: true });
+    update(4, { status: "running", detail: "", request: { method: "PUT", url, body: reqBody }, response: null });
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: reqBody,
+      });
       const text = await res.text();
-      update(4, { response: { status: res.status, body: text } });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
+      update(4, { response: { status: res.status, statusText: res.statusText, body: text } });
+      if (!res.ok) throw new Error(httpError(res));
       const data = JSON.parse(text);
-      const found = data.find((t: { id: number }) => t.id === id);
-      if (!found) throw new Error(`Todo id=${id} not found after update`);
-      if (found.title !== updatedTitleRef.current)
-        throw new Error(`Expected title "${updatedTitleRef.current}", got "${found.title}"`);
-      if (found.completed !== true)
-        throw new Error(`Expected completed=true, got ${found.completed}`);
-      update(4, { status: "pass", detail: `Verified update: "${updatedTitleRef.current}", completed=true` });
+      if (data.title !== newTitle)
+        throw new Error(`Expected title "${newTitle}", got "${data.title}"`);
+      if (data.completed !== true)
+        throw new Error(`Expected completed=true, got ${data.completed}`);
+      update(4, { status: "pass", detail: `Updated todo #${id} → "${newTitle}", completed ✓` });
       return true;
     } catch (e: unknown) {
       update(4, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
@@ -247,17 +250,24 @@ export default function ApiTester() {
     }
   }
 
-  /** Step 6: DELETE /todos/:id */
-  async function runStep5(id: number | null): Promise<boolean> {
+  /** Step 5: GET /todos — verify the update persisted */
+  async function runStep4(id: number | null): Promise<boolean> {
     if (id == null) { update(5, { status: "fail", detail: "No id — run POST first", request: null, response: null }); return false; }
-    const url = `${baseUrl}/todos/${id}`;
-    update(5, { status: "running", detail: "", request: { method: "DELETE", url }, response: null });
+    const url = `${baseUrl}/todos`;
+    update(5, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
-      const res = await fetch(url, { method: "DELETE" });
+      const res = await fetch(url);
       const text = await res.text();
-      update(5, { response: { status: res.status, body: text || "(empty)" } });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
-      update(5, { status: "pass", detail: `Deleted id=${id}` });
+      update(5, { response: { status: res.status, statusText: res.statusText, body: text } });
+      if (!res.ok) throw new Error(httpError(res));
+      const data = JSON.parse(text);
+      const found = data.find((t: { id: number }) => t.id === id);
+      if (!found) throw new Error(`Todo id=${id} not found after update`);
+      if (found.title !== updatedTitleRef.current)
+        throw new Error(`Expected title "${updatedTitleRef.current}", got "${found.title}"`);
+      if (found.completed !== true)
+        throw new Error(`Expected completed=true, got ${found.completed}`);
+      update(5, { status: "pass", detail: `Confirmed: title is "${updatedTitleRef.current}", completed ✓` });
       return true;
     } catch (e: unknown) {
       update(5, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
@@ -265,26 +275,44 @@ export default function ApiTester() {
     }
   }
 
+  /** Step 6: DELETE /todos/:id */
+  async function runStep5(id: number | null): Promise<boolean> {
+    if (id == null) { update(6, { status: "fail", detail: "No id — run POST first", request: null, response: null }); return false; }
+    const url = `${baseUrl}/todos/${id}`;
+    update(6, { status: "running", detail: "", request: { method: "DELETE", url }, response: null });
+    try {
+      const res = await fetch(url, { method: "DELETE" });
+      const text = await res.text();
+      update(6, { response: { status: res.status, statusText: res.statusText, body: text || "(empty)" } });
+      if (!res.ok) throw new Error(httpError(res));
+      update(6, { status: "pass", detail: `Successfully deleted todo #${id}` });
+      return true;
+    } catch (e: unknown) {
+      update(6, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  }
+
   /** Step 7: GET /todos — verify todo is gone & count restored */
   async function runStep6(id: number | null): Promise<boolean> {
-    if (id == null) { update(6, { status: "fail", detail: "No id — run POST & DELETE first", request: null, response: null }); return false; }
+    if (id == null) { update(7, { status: "fail", detail: "No id — run POST & DELETE first", request: null, response: null }); return false; }
     const url = `${baseUrl}/todos`;
-    update(6, { status: "running", detail: "", request: { method: "GET", url }, response: null });
+    update(7, { status: "running", detail: "", request: { method: "GET", url }, response: null });
     try {
       const res = await fetch(url);
       const text = await res.text();
-      update(6, { response: { status: res.status, body: text } });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
+      update(7, { response: { status: res.status, statusText: res.statusText, body: text } });
+      if (!res.ok) throw new Error(httpError(res));
       const data = JSON.parse(text);
       if (!Array.isArray(data)) throw new Error("Expected JSON array");
       const found = data.find((t: { id: number }) => t.id === id);
       if (found) throw new Error(`Todo id=${id} still exists after deletion`);
       if (data.length !== initialCountRef.current)
         throw new Error(`Expected ${initialCountRef.current} todos, got ${data.length}`);
-      update(6, { status: "pass", detail: `Deleted todo gone, count back to ${data.length}` });
+      update(7, { status: "pass", detail: `Todo removed — list restored to ${data.length} todo(s)` });
       return true;
     } catch (e: unknown) {
-      update(6, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      update(7, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
       return false;
     }
   }
@@ -295,13 +323,14 @@ export default function ApiTester() {
     setRunningIndex(index);
     setExpandedIndex(index);
     const id = createdIdRef.current;
-    if (index === 0) await runStep0();
-    else if (index === 1) await runStep1();
-    else if (index === 2) await runStep2(id);
-    else if (index === 3) await runStep3(id);
-    else if (index === 4) await runStep4(id);
-    else if (index === 5) await runStep5(id);
-    else if (index === 6) await runStep6(id);
+    if (index === 0) await runStepConnection();
+    else if (index === 1) await runStep0();
+    else if (index === 2) await runStep1();
+    else if (index === 3) await runStep2(id);
+    else if (index === 4) await runStep3(id);
+    else if (index === 5) await runStep4(id);
+    else if (index === 6) await runStep5(id);
+    else if (index === 7) await runStep6(id);
     setRunningIndex(null);
   }
 
@@ -312,6 +341,7 @@ export default function ApiTester() {
     resetAll();
     await new Promise((r) => setTimeout(r, 50));
 
+    if (!(await runStepConnection())) { setRunningAll(false); return; }
     if (!(await runStep0())) { setRunningAll(false); return; }
     const post = await runStep1();
     if (!post.ok) { setRunningAll(false); return; }
@@ -352,7 +382,7 @@ export default function ApiTester() {
           <div>
             <CardTitle className="text-lg">Backend Test Suite</CardTitle>
             <CardDescription className="mt-1">
-              Runs 7 sequential tests with random data to verify your API.
+              Validates your API with 8 sequential steps: connect, create, read, update, and delete — using random data each run.
             </CardDescription>
           </div>
           <div className="flex gap-2">
@@ -467,7 +497,7 @@ export default function ApiTester() {
                   <div className="rounded-b-lg border border-t-0 border-border bg-muted/30 dark:bg-muted/10 px-4 py-3 space-y-3">
                     {test.status === "idle" ? (
                       <p className="text-xs text-muted-foreground italic">
-                        Click &quot;Run&quot; to see request and response details.
+                        Hit &quot;Run&quot; to execute this test and see the HTTP request and response.
                       </p>
                     ) : (
                       <>
@@ -504,7 +534,7 @@ export default function ApiTester() {
                                 RESPONSE
                               </span>
                               <code className="text-xs font-mono text-muted-foreground">
-                                Status {test.response.status}
+                                {test.response.status} {test.response.statusText}
                               </code>
                             </div>
                             <pre className="rounded-md bg-background border border-border p-3 text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto leading-relaxed">
@@ -529,7 +559,7 @@ export default function ApiTester() {
         {allPassed && (
           <Alert>
             <AlertDescription className="text-center font-semibold">
-              🎉 All tests passed! Your backend is working correctly.
+              🎉 All 8 tests passed — your backend is fully working!
             </AlertDescription>
           </Alert>
         )}
