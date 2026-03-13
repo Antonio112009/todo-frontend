@@ -1,6 +1,6 @@
 import { Todo, CreateTodoRequest, UpdateTodoRequest } from "@/types/todo";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export async function getTodos(): Promise<Todo[]> {
   const res = await fetch(`${API_BASE_URL}/todos`);

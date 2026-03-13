@@ -1,6 +1,11 @@
 "use client";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 const endpoints = [
   {
@@ -36,76 +41,86 @@ const endpoints = [
   },
 ];
 
-const methodColors: Record<string, string> = {
-  GET: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-400",
-  POST: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400",
-  PUT: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-400",
-  DELETE: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400",
+const methodVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  GET: "default",
+  POST: "secondary",
+  PUT: "outline",
+  DELETE: "destructive",
 };
 
 export default function ApiSpec() {
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-6 dark:border-gray-700 dark:bg-gray-900">
-      <h2 className="mb-1 text-xl font-bold text-gray-900 dark:text-white">
-        📋 Backend API Specification
-      </h2>
-      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-        Base URL: <code className="rounded bg-gray-200 px-1.5 py-0.5 text-xs dark:bg-gray-700">{API_BASE_URL}</code>
-      </p>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">📋 Backend API Specification</CardTitle>
+        <CardDescription>
+          Base URL:{" "}
+          <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
+            {API_BASE_URL}
+          </code>
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <Alert>
+          <AlertTitle>⚠️ CORS Required</AlertTitle>
+          <AlertDescription>
+            Backend must allow requests from{" "}
+            <code className="text-xs font-mono">http://localhost:3000</code>
+          </AlertDescription>
+        </Alert>
 
-      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800
-                      dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-        <strong>CORS required:</strong> Backend must allow requests from <code className="text-xs">http://localhost:3000</code>
-      </div>
-
-      <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-        Todo Model
-      </h3>
-      <pre className="mb-5 rounded-lg bg-gray-800 p-3 text-sm text-gray-100 overflow-x-auto">
+        <div>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Todo Model
+          </h3>
+          <pre className="rounded-lg bg-muted p-3 text-sm font-mono overflow-x-auto">
 {`{
   "id": number,
   "title": string,
   "completed": boolean
 }`}
-      </pre>
+          </pre>
+        </div>
 
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-        Endpoints
-      </h3>
-      <div className="flex flex-col gap-4">
-        {endpoints.map((ep) => (
-          <div
-            key={`${ep.method}-${ep.path}`}
-            className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
-          >
-            <div className="mb-2 flex items-center gap-2">
-              <span className={`rounded px-2 py-0.5 text-xs font-bold ${methodColors[ep.method]}`}>
-                {ep.method}
-              </span>
-              <code className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                {ep.path}
-              </code>
-            </div>
-            <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
-              {ep.description}
-            </p>
-            {ep.requestBody && (
-              <div className="mb-2">
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Request body:</span>
-                <pre className="mt-1 rounded bg-gray-100 p-2 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-300 overflow-x-auto">
-                  {ep.requestBody}
-                </pre>
-              </div>
-            )}
-            <div>
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Response:</span>
-              <pre className="mt-1 rounded bg-gray-100 p-2 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-300 overflow-x-auto">
-                {ep.responseExample}
-              </pre>
-            </div>
+        <Separator />
+
+        <div>
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Endpoints
+          </h3>
+          <div className="flex flex-col gap-3">
+            {endpoints.map((ep) => (
+              <Card key={`${ep.method}-${ep.path}`} size="sm">
+                <CardContent className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={methodVariant[ep.method]}>{ep.method}</Badge>
+                    <code className="text-sm font-semibold font-mono">{ep.path}</code>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{ep.description}</p>
+                  {ep.requestBody && (
+                    <div>
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        Request body:
+                      </span>
+                      <pre className="mt-1 rounded bg-muted p-2 text-xs font-mono overflow-x-auto">
+                        {ep.requestBody}
+                      </pre>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      Response:
+                    </span>
+                    <pre className="mt-1 rounded bg-muted p-2 text-xs font-mono overflow-x-auto">
+                      {ep.responseExample}
+                    </pre>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
-        ))}
-      </div>
-    </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

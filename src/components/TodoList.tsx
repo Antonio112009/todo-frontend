@@ -12,7 +12,7 @@ interface TodoListProps {
 export default function TodoList({ todos, onToggle, onDelete }: TodoListProps) {
   if (todos.length === 0) {
     return (
-      <p className="py-8 text-center text-gray-400 dark:text-gray-500">
+      <p className="py-8 text-center text-muted-foreground">
         No todos yet. Add one above!
       </p>
     );
@@ -32,7 +32,7 @@ export default function TodoList({ todos, onToggle, onDelete }: TodoListProps) {
           />
         ))}
       </ul>
-      <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+      <p className="mt-3 text-sm text-muted-foreground">
         {remaining} item{remaining !== 1 ? "s" : ""} remaining
       </p>
     </div>

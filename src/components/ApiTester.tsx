@@ -1,10 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-
-type TestStatus = "idle" | "running" | "pass" | "fail";
+type TestStatus = "idle" | "running" | "pass" | "fail" | "skipped";
 
 interface TestResult {
   name: string;
@@ -12,17 +16,27 @@ interface TestResult {
   detail: string;
 }
 
-const initialTests: TestResult[] = [
-  { name: "GET /todos", status: "idle", detail: "" },
-  { name: "POST /todos", status: "idle", detail: "" },
-  { name: "PUT /todos/:id", status: "idle", detail: "" },
-  { name: "DELETE /todos/:id", status: "idle", detail: "" },
-  { name: "Verify deletion", status: "idle", detail: "" },
+const TEST_NAMES = [
+  "GET /todos",
+  "POST /todos",
+  "PUT /todos/:id",
+  "DELETE /todos/:id",
+  "Verify deletion",
 ];
 
+function makeInitial(): TestResult[] {
+  return TEST_NAMES.map((name) => ({ name, status: "idle" as TestStatus, detail: "" }));
+}
+
 export default function ApiTester() {
-  const [tests, setTests] = useState<TestResult[]>(initialTests);
-  const [running, setRunning] = useState(false);
+  const [baseUrl, setBaseUrl] = useState(
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+  );
+  const [tests, setTests] = useState<TestResult[]>(makeInitial());
+  const [runningIndex, setRunningIndex] = useState<number | null>(null);
+  const [runningAll, setRunningAll] = useState(false);
+  // Track the id created by POST so PUT/DELETE/Verify can use it
+  const [lastCreatedId, setLastCreatedId] = useState<number | null>(null);
 
   function update(index: number, patch: Partial<TestResult>) {
     setTests((prev) =>
@@ -30,29 +44,32 @@ export default function ApiTester() {
     );
   }
 
-  async function runAllTests() {
-    setRunning(true);
-    setTests(initialTests.map((t) => ({ ...t, status: "running", detail: "" })));
+  function resetAll() {
+    setTests(makeInitial());
+    setLastCreatedId(null);
+  }
 
-    let createdId: number | null = null;
+  // ── Individual test runners ──────────────────────────────────────
 
-    // 1) GET /todos — should return an array
+  async function runGetTodos(): Promise<boolean> {
+    update(0, { status: "running", detail: "" });
     try {
-      const res = await fetch(`${API_BASE_URL}/todos`);
+      const res = await fetch(`${baseUrl}/todos`);
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Expected JSON array");
       update(0, { status: "pass", detail: `Returned ${data.length} todo(s)` });
+      return true;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      update(0, { status: "fail", detail: msg });
-      setRunning(false);
-      return;
+      update(0, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      return false;
     }
+  }
 
-    // 2) POST /todos — create a test todo
+  async function runPostTodo(): Promise<boolean> {
+    update(1, { status: "running", detail: "" });
     try {
-      const res = await fetch(`${API_BASE_URL}/todos`, {
+      const res = await fetch(`${baseUrl}/todos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "__test_todo__" }),
@@ -60,134 +77,249 @@ export default function ApiTester() {
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const data = await res.json();
       if (!data.id) throw new Error("Response missing 'id' field");
-      if (data.title !== "__test_todo__") throw new Error(`Expected title "__test_todo__", got "${data.title}"`);
-      if (data.completed !== false) throw new Error(`Expected completed=false, got ${data.completed}`);
-      createdId = data.id;
+      if (data.title !== "__test_todo__")
+        throw new Error(`Expected title "__test_todo__", got "${data.title}"`);
+      if (data.completed !== false)
+        throw new Error(`Expected completed=false, got ${data.completed}`);
+      setLastCreatedId(data.id);
       update(1, { status: "pass", detail: `Created todo id=${data.id}` });
+      return true;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      update(1, { status: "fail", detail: msg });
-      setRunning(false);
-      return;
+      update(1, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      return false;
     }
+  }
 
-    // 3) PUT /todos/:id — update the test todo
+  async function runPutTodo(id: number | null): Promise<boolean> {
+    if (id == null) {
+      update(2, { status: "fail", detail: "No todo id — run POST first" });
+      return false;
+    }
+    update(2, { status: "running", detail: "" });
     try {
-      const res = await fetch(`${API_BASE_URL}/todos/${createdId}`, {
+      const res = await fetch(`${baseUrl}/todos/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "__test_updated__", completed: true }),
       });
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const data = await res.json();
-      if (data.title !== "__test_updated__") throw new Error(`Expected title "__test_updated__", got "${data.title}"`);
-      if (data.completed !== true) throw new Error(`Expected completed=true, got ${data.completed}`);
-      update(2, { status: "pass", detail: `Updated todo id=${createdId}` });
+      if (data.title !== "__test_updated__")
+        throw new Error(`Expected title "__test_updated__", got "${data.title}"`);
+      if (data.completed !== true)
+        throw new Error(`Expected completed=true, got ${data.completed}`);
+      update(2, { status: "pass", detail: `Updated todo id=${id}` });
+      return true;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      update(2, { status: "fail", detail: msg });
-      setRunning(false);
-      return;
+      update(2, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      return false;
     }
+  }
 
-    // 4) DELETE /todos/:id — delete the test todo
+  async function runDeleteTodo(id: number | null): Promise<boolean> {
+    if (id == null) {
+      update(3, { status: "fail", detail: "No todo id — run POST first" });
+      return false;
+    }
+    update(3, { status: "running", detail: "" });
     try {
-      const res = await fetch(`${API_BASE_URL}/todos/${createdId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`${baseUrl}/todos/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`Status ${res.status}`);
-      update(3, { status: "pass", detail: `Deleted todo id=${createdId}` });
+      update(3, { status: "pass", detail: `Deleted todo id=${id}` });
+      return true;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      update(3, { status: "fail", detail: msg });
-      setRunning(false);
-      return;
+      update(3, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      return false;
     }
+  }
 
-    // 5) Verify deletion — GET /todos should no longer contain the test todo
+  async function runVerifyDeletion(id: number | null): Promise<boolean> {
+    if (id == null) {
+      update(4, { status: "fail", detail: "No todo id — run POST & DELETE first" });
+      return false;
+    }
+    update(4, { status: "running", detail: "" });
     try {
-      const res = await fetch(`${API_BASE_URL}/todos`);
+      const res = await fetch(`${baseUrl}/todos`);
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const data = await res.json();
-      const found = data.find((t: { id: number }) => t.id === createdId);
-      if (found) throw new Error(`Todo id=${createdId} still exists after deletion`);
+      const found = data.find((t: { id: number }) => t.id === id);
+      if (found) throw new Error(`Todo id=${id} still exists after deletion`);
       update(4, { status: "pass", detail: "Confirmed todo was deleted" });
+      return true;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      update(4, { status: "fail", detail: msg });
+      update(4, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  }
+
+  // ── Run single test ──────────────────────────────────────────────
+
+  async function runSingle(index: number) {
+    setRunningIndex(index);
+    const runners = [
+      () => runGetTodos(),
+      () => runPostTodo(),
+      () => runPutTodo(lastCreatedId),
+      () => runDeleteTodo(lastCreatedId),
+      () => runVerifyDeletion(lastCreatedId),
+    ];
+    await runners[index]();
+    setRunningIndex(null);
+  }
+
+  // ── Run all tests sequentially ───────────────────────────────────
+
+  async function runAllTests() {
+    setRunningAll(true);
+    resetAll();
+
+    // Small delay so state resets visually
+    await new Promise((r) => setTimeout(r, 50));
+
+    let createdId: number | null = null;
+
+    // 1. GET
+    if (!(await runGetTodos())) { setRunningAll(false); return; }
+
+    // 2. POST
+    {
+      update(1, { status: "running", detail: "" });
+      try {
+        const res = await fetch(`${baseUrl}/todos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "__test_todo__" }),
+        });
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json();
+        if (!data.id) throw new Error("Response missing 'id' field");
+        if (data.title !== "__test_todo__")
+          throw new Error(`Expected title "__test_todo__", got "${data.title}"`);
+        if (data.completed !== false)
+          throw new Error(`Expected completed=false, got ${data.completed}`);
+        createdId = data.id;
+        setLastCreatedId(data.id);
+        update(1, { status: "pass", detail: `Created todo id=${data.id}` });
+      } catch (e: unknown) {
+        update(1, { status: "fail", detail: e instanceof Error ? e.message : String(e) });
+        setRunningAll(false);
+        return;
+      }
     }
 
-    setRunning(false);
+    // 3. PUT
+    if (!(await runPutTodo(createdId))) { setRunningAll(false); return; }
+
+    // 4. DELETE
+    if (!(await runDeleteTodo(createdId))) { setRunningAll(false); return; }
+
+    // 5. Verify
+    await runVerifyDeletion(createdId);
+
+    setRunningAll(false);
   }
+
+  const busy = runningAll || runningIndex !== null;
 
   const statusIcon: Record<TestStatus, string> = {
     idle: "⚪",
     running: "🔄",
     pass: "✅",
     fail: "❌",
+    skipped: "⏭️",
   };
 
   const allPassed = tests.every((t) => t.status === "pass");
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-6 dark:border-gray-700 dark:bg-gray-900">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-          🧪 Backend Test
-        </h2>
-        <button
-          onClick={runAllTests}
-          disabled={running}
-          className="rounded-lg bg-purple-600 px-5 py-2 text-sm font-semibold text-white
-                     hover:bg-purple-700 active:bg-purple-800 transition-colors
-                     disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {running ? "Running…" : "Run Tests"}
-        </button>
-      </div>
-
-      <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-        Creates a test todo, updates it, deletes it, and verifies each step.
-        Testing against: <code className="rounded bg-gray-200 px-1.5 py-0.5 text-xs dark:bg-gray-700">{API_BASE_URL}</code>
-      </p>
-
-      <div className="flex flex-col gap-2">
-        {tests.map((test, i) => (
-          <div
-            key={i}
-            className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm
-              ${test.status === "pass"
-                ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
-                : test.status === "fail"
-                ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
-                : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-              }`}
-          >
-            <span className="mt-0.5 text-base">{statusIcon[test.status]}</span>
-            <div className="flex-1">
-              <span className="font-medium text-gray-800 dark:text-gray-200">
-                {test.name}
-              </span>
-              {test.detail && (
-                <p className={`mt-0.5 text-xs ${
-                  test.status === "fail"
-                    ? "text-red-600 dark:text-red-400"
-                    : "text-gray-500 dark:text-gray-400"
-                }`}>
-                  {test.detail}
-                </p>
-              )}
-            </div>
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">🧪 Backend Test</CardTitle>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={resetAll} disabled={busy}>
+              Reset
+            </Button>
+            <Button size="sm" onClick={runAllTests} disabled={busy}>
+              {runningAll ? "Running…" : "Run All Tests"}
+            </Button>
           </div>
-        ))}
-      </div>
-
-      {allPassed && (
-        <div className="mt-4 rounded-lg border border-green-300 bg-green-100 p-3 text-center text-sm font-semibold text-green-800
-                        dark:border-green-700 dark:bg-green-900/30 dark:text-green-400">
-          🎉 All tests passed! Your backend is working correctly.
         </div>
-      )}
-    </div>
+        <CardDescription>
+          Creates a test todo, updates it, deletes it, and verifies each step.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {/* Configurable base URL */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium whitespace-nowrap">Base URL:</label>
+          <Input
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="http://localhost:4000"
+            className="h-8 font-mono text-xs"
+            disabled={busy}
+          />
+        </div>
+
+        <Separator />
+
+        {/* Test rows */}
+        <div className="flex flex-col gap-2">
+          {tests.map((test, i) => (
+            <div
+              key={i}
+              className={`flex items-center gap-3 rounded-lg border px-4 py-2.5 text-sm transition-colors
+                ${test.status === "pass"
+                  ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                  : test.status === "fail"
+                  ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+                  : "border-border bg-card"
+                }`}
+            >
+              <span className="text-base">{statusIcon[test.status]}</span>
+              <div className="flex-1 min-w-0">
+                <span className="font-medium">{test.name}</span>
+                {test.detail && (
+                  <p className={`mt-0.5 text-xs truncate ${
+                    test.status === "fail" ? "text-destructive" : "text-muted-foreground"
+                  }`}>
+                    {test.detail}
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => runSingle(i)}
+                disabled={busy}
+              >
+                Run
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        {allPassed && (
+          <Alert>
+            <AlertDescription className="text-center font-semibold">
+              🎉 All tests passed! Your backend is working correctly.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {tests.some((t) => t.status !== "idle") && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Results:</span>
+            <Badge variant="default">{tests.filter((t) => t.status === "pass").length} passed</Badge>
+            {tests.some((t) => t.status === "fail") && (
+              <Badge variant="destructive">{tests.filter((t) => t.status === "fail").length} failed</Badge>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

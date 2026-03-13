@@ -1,7 +1,7 @@
 # Backend API Contract
 
 The frontend expects the following REST API endpoints.
-The base URL is configured via `NEXT_PUBLIC_API_URL` env variable (default: `http://localhost:8080`).
+The base URL is configured via `NEXT_PUBLIC_API_URL` env variable (default: `http://localhost:4000`).
 
 ## Data Model
 

@@ -7,12 +7,15 @@ import TodoForm from "@/components/TodoForm";
 import TodoList from "@/components/TodoList";
 import ApiSpec from "@/components/ApiSpec";
 import ApiTester from "@/components/ApiTester";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function Home() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"todos" | "api" | "test">("todos");
 
   const fetchTodos = useCallback(async () => {
     try {
@@ -21,7 +24,7 @@ export default function Home() {
       setTodos(data);
     } catch {
       setError(
-        "Could not connect to the backend. Make sure the API server is running on the configured URL."
+        "Could not connect to the backend. Make sure the API server is running."
       );
     } finally {
       setLoading(false);
@@ -60,69 +63,57 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12">
-      <h1 className="mb-8 text-center text-3xl font-bold text-gray-900 dark:text-white">
+    <main className="mx-auto max-w-2xl px-4 py-10">
+      <h1 className="mb-6 text-center text-3xl font-bold tracking-tight">
         ✅ Todo List
       </h1>
 
-      {/* Tab navigation */}
-      <div className="mb-6 flex rounded-lg border border-gray-200 bg-gray-100 p-1 dark:border-gray-700 dark:bg-gray-800">
-        {([
-          { key: "todos" as const, label: "Todo App" },
-          { key: "api" as const, label: "API Spec" },
-          { key: "test" as const, label: "Test Backend" },
-        ]).map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors
-              ${activeTab === tab.key
-                ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white"
-                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs defaultValue="todos">
+        <TabsList className="mb-6 w-full">
+          <TabsTrigger value="todos">Todo App</TabsTrigger>
+          <TabsTrigger value="api">API Spec</TabsTrigger>
+          <TabsTrigger value="test">Test Backend</TabsTrigger>
+        </TabsList>
 
-      {/* Todo App tab */}
-      {activeTab === "todos" && (
-        <>
-          <div className="mb-6">
-            <TodoForm onAdd={handleAdd} />
-          </div>
+        <TabsContent value="todos">
+          <Card>
+            <CardContent className="space-y-4">
+              <TodoForm onAdd={handleAdd} />
 
-          {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700
-                            dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
-              {error}
-              <button
-                onClick={fetchTodos}
-                className="ml-2 underline hover:no-underline"
-              >
-                Retry
-              </button>
-            </div>
-          )}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription className="flex items-center justify-between">
+                    {error}
+                    <Button variant="link" size="sm" onClick={fetchTodos}>
+                      Retry
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
 
-          {loading ? (
-            <p className="py-8 text-center text-gray-400">Loading…</p>
-          ) : (
-            <TodoList
-              todos={todos}
-              onToggle={handleToggle}
-              onDelete={handleDelete}
-            />
-          )}
-        </>
-      )}
+              {loading ? (
+                <p className="py-8 text-center text-muted-foreground">
+                  Loading…
+                </p>
+              ) : (
+                <TodoList
+                  todos={todos}
+                  onToggle={handleToggle}
+                  onDelete={handleDelete}
+                />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      {/* API Spec tab */}
-      {activeTab === "api" && <ApiSpec />}
+        <TabsContent value="api">
+          <ApiSpec />
+        </TabsContent>
 
-      {/* Test Backend tab */}
-      {activeTab === "test" && <ApiTester />}
+        <TabsContent value="test">
+          <ApiTester />
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }
