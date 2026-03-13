@@ -138,7 +138,7 @@ export default function ApiTester() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       const detail = msg.includes("fetch") || msg.includes("Failed") || msg.includes("NetworkError")
-        ? `Cannot reach server at ${baseUrl} — is it running?`
+        ? `Cannot reach server at ${baseUrl} — is it running? If yes, make sure CORS is enabled (npm install cors)`
         : msg;
       update(0, { status: "fail", detail });
       return false;
